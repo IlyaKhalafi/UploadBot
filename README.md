@@ -14,6 +14,7 @@ Use the bash commands below to install and run the bot:
 
 ````bash
 git clone https://github.com/IlyaKhalafi/UploadBot
+cd UploadBot
 pip3 install -r requirements.txt
 # <Create config.py appropriately>
 python3 main.py

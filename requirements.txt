@@ -1,0 +1,4 @@
+pyrogram
+# --------- Optional For Speedup  --------- #
+tgcrypto
+uvloop

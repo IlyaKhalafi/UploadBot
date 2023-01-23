@@ -11,11 +11,15 @@ async def downloadage(client, message):
     try:
         if message.text.endswith(tuple(photo_extensions)):
             await message.reply_photo(photo=message.text, quote=True)
+            
         elif message.text.endswith(tuple(audio_extensions)):
             await message.reply_audio(audio=message.text, quote=True)
+            
         elif message.text.endswith(tuple(video_extensions)):
             await message.reply_video(video=message.text, quote=True)
+            
         else:
             await message.reply_document(document=message.text, quote=True)
+            
     except:
         await message.reply_text("Something went wrong. Probably the download link is invalid?", quote=True)

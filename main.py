@@ -8,7 +8,7 @@ except:
 
 from pyrogram import Client
 from config import API_ID, API_HASH, BOT_TOKEN
-import keep_alive
+from utils import keep_alive
 
 if __name__ == '__main__':
 

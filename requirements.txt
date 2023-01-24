@@ -1,4 +1,8 @@
 pyrogram
-# --------- Optional For Speedup  --------- #
+aiohttp
+# --------- Optional For aiohttp Speedup  --------- #
+cchardet
+aiodns
+# --------- Optional For pyrogram Speedup  --------- #
 tgcrypto
 uvloop

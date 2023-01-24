@@ -1,62 +1,73 @@
 import os
 import requests
+import aiohttp
 from pyrogram import Client, filters
 from config import MAX_FILE_SIZE
 
 
-def upload_to_transfersh(file_path):
-
-    url = 'https://transfer.sh/'
-    file = {'{}'.format(file_path): open(file_path, 'rb')}
-    response = requests.post(url, files=file)
-    download_link = response.content.decode('utf-8')
-    return download_link
-
-
-@Client.on_message(filters.private
-                   & (filters.document | filters.photo | filters.audio | filters.video))
+@Client.on_message(
+    filters.private
+    & (filters.document | filters.photo | filters.audio | filters.video))
 async def upload(client, message):
+  # Checking if file size is greater than the defined limit
+  if (message.document and message.document.file_size > MAX_FILE_SIZE):
+    await message.reply_text(
+        f'File is too big.\n\nFile size: {message.document.file_size}')
+    return
 
-    # Checking if file size is greater than the defined limit
-    if (message.document and message.document.file_size > MAX_FILE_SIZE):
-        await message.reply_text(
-            f'File is too big.\n\nFile size: {message.document.file_size}'
-        )
-        return
-    if (message.photo and message.photo.file_size > MAX_FILE_SIZE):
-        await message.reply_text(
-            f'Photo is too big.\n\nFile size: {message.photo.file_size}'
-        )
-        return
-    if (message.audio and message.audio.file_size > MAX_FILE_SIZE):
-        await message.reply_text(
-            f'Audio is too big.\n\nFile size: {message.audio.file_size}'
-        )
-        return
-    if (message.video and message.video.file_size > MAX_FILE_SIZE):
-        await message.reply_text(
-            f'Video is too big.\n\nFile size: {message.video.file_size}'
-        )
-        return
+  if (message.photo and message.photo.file_size > MAX_FILE_SIZE):
+    await message.reply_text(
+        f'Photo is too big.\n\nFile size: {message.photo.file_size}')
+    return
 
-    # Downloading the file
-    await message.reply_text('Downloading file...', quote=True)
-    path = await message.download()
-    if not path:
-        await message.reply_text('Failed to download the file. Please try again later...', quote=True)
-        return
+  if (message.audio and message.audio.file_size > MAX_FILE_SIZE):
+    await message.reply_text(
+        f'Audio is too big.\n\nFile size: {message.audio.file_size}')
+    return
 
-    # Uploading the file to transfer.sh
-    await message.reply_text('Uploading the file to transfer.sh...', quote=True)
-    link = upload_to_transfersh(path).removesuffix('\n')
+  if (message.video and message.video.file_size > MAX_FILE_SIZE):
+    await message.reply_text(
+        f'Video is too big.\n\nFile size: {message.video.file_size}')
+    return
 
-    # remove file in from local storage
-    os.remove(path)
+  # TODO: Make it work for all media types
+  # TODO: Photo object doesn't have file_name field
+  # Getting file name from message
+  file_name = None
+  if message.document:
+    file_name = message.document.file_name
+  elif message.photo:
+    file_name = message.photo.file_name
+  elif message.audio:
+    file_name = message.audio.file_name
+  elif message.video:
+    file_name = message.video.file_name
 
-    # Sending download link to user
+  # Uploading the file to transfer.sh
+  await message.reply_text('Mirroring the file...', quote=True)
+
+  # Mirroring the file from Telegram to transfer.sh
+  link = None
+  data = aiohttp.FormData()
+  data.add_field('file', client.stream_media(message),
+                 filename=file_name,
+                 content_type='multipart/form-data')
+
+  async with aiohttp.ClientSession() as session:
+      async with session.post('https://transfer.sh/',
+                              data=data) as response:
+          link = (await response.content.read()).decode('utf-8')
+
+  # Sending download link to user
+  if link == None:
+    await message.reply_text(
+        'Failed to upload the file. Please try again later...', quote=True)
+  else:
     parts = link.split('/')
     parts.insert(3, 'get')
     download_link = '/'.join(parts)
-    await message.reply_text(f"File's Download Page:\n\n{link}"
-                             f'\n\nDirect Download Link:\n\n{download_link}'
-                             f'\n\nDownload Link will be valid for 2 weeks...', quote=True)
+    await message.reply_text(
+        f"File's Download Page:\n\n{link}"
+        f'\n\nDirect Download Link:\n\n{download_link}'
+        f'\n\nDownload Link will be valid for 2 weeks...',
+        quote=True)

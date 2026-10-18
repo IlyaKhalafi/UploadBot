@@ -1,8 +1,10 @@
 # Encrypted uploads
 
-The streaming encryption layer produces `.ubenc` files with separate decryption
-keys. File contents are encrypted as chunks arrive, without a temporary upload
-file. Keys must remain separate from hosted files, URLs, and history metadata.
+Use `/encrypt on` before sending a file. The bot sends its decryption key in a
+separate private message before uploading the `.ubenc` file. Keep that message.
+File contents are encrypted as chunks arrive, without a temporary upload file.
+Keys are never saved in hosted files, URLs, or history metadata. Use `/encrypt off`
+to return to ordinary uploads.
 
 Download the `.ubenc` file, install UploadBot with uv, and run
 

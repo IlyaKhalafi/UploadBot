@@ -24,9 +24,11 @@ Telegram -> 512 KiB chunks -> UploadBot -> File2Share -> Download link
 
 ## What you get
 
-- **Streaming uploads** without a separate download-to-disk step.
-- **Responsive transfers** with progress updates and `/cancel`.
-- **Controlled concurrency** with one transfer per user and a global limit.
+- **Large files and albums** streamed through File2Share's numbered-part API.
+- **Resilient transfers** with failed-part retries, speed, ETA, and cancellation.
+- **Your choice of host** with File2Share, compatible PUT hosts, or WebDAV.
+- **Private history** with filename search, download buttons, and remote deletion.
+- **Optional encryption** with a separate key and a local decryption command.
 - **Simple hosting** with uv, Docker Compose, and an optional user allowlist.
 
 ## Quick start
@@ -55,19 +57,24 @@ No File2Share account or hosting API key is required. For a personal bot, set
 | A public HTTP(S) file URL | The file sent back through Telegram |
 | `/start` or `/help` | Commands and the configured file limit |
 | `/cancel` | Stop your active transfer |
+| `/files report` | Find recent uploads by filename |
+| `/provider`, `/expiry`, `/encrypt` | Choose settings for future uploads |
 
 Voice messages and animations work too. File URLs must be accessible to Telegram
 without browser cookies or a login.
 
 ## Hosting limits
 
-File2Share accepts **up to 95 MB per request**, keeps files for **up to 14 days**,
+The default file limit is **2 GB**, subject to Telegram's own limits. File2Share's
+numbered-part API supports files up to **50 GB** when the operator raises the limit.
+The host keeps files for **up to 14 days**,
 and limits uploads to **40 per hour per IP address**. Anyone with the link can
 download the file. Some file types, including programs and web pages, must be
 archived first. See the [host's API guide](https://www.file2share.us/cli).
 
-Larger-file uploads through File2Share's separate chunked API are not implemented.
-You can also configure another compatible PUT upload host.
+Use `/expiry 2` for shorter retention or `/encrypt on` for encrypted uploads.
+Keep the separate key message. See [commands and providers](docs/features.md)
+and [decrypting files](docs/encryption.md).
 
 ## Run with Docker
 

@@ -33,11 +33,12 @@ private. Both are excluded from Git and Docker build contexts.
 | `API_HASH` | Required | Telegram application API hash |
 | `BOT_TOKEN` | Required | Your bot's BotFather token |
 | `TRANSFER_URL` | `https://file2share.us` | Upload host base URL |
-| `MAX_FILE_SIZE` | `95000000` | Maximum Telegram to host file size, in bytes |
+| `MAX_FILE_SIZE` | `2000000000` | Maximum Telegram to host upload size, including encryption overhead |
 | `MAX_CONCURRENT_TRANSFERS` | `3` | Total active transfers, with one per user |
 | `TRANSFER_TIMEOUT` | `1800` | Time limit for one transfer, in seconds |
 | `ALLOWED_USER_IDS` | Empty | Comma-separated Telegram user IDs; empty permits everyone |
 | `SESSION_PATH` | `data/uploadbot` | Persistent Telethon session path |
+| `UPLOAD_PROVIDERS` | `[]` | Optional JSON array of additional provider profiles |
 
 For a personal bot, restrict `ALLOWED_USER_IDS` to your own Telegram user ID.
 Increasing concurrency allows more simultaneous work and uses more connections
@@ -53,8 +54,13 @@ File2Share accepts a raw PUT upload at `/<filename>` and returns the direct file
 URL in the `X-Direct-Url` response header. Its response body contains a sharing
 page URL. UploadBot prefers the direct URL so it works in download clients.
 
-The default file limit is 95,000,000 bytes. Raising it above that value is rejected
-when File2Share is selected. Files are retained for up to 14 days, and the host
+Files over 95,000,000 bytes use numbered parts, streamed directly from Telegram.
+The default limit is 2,000,000,000 bytes. File2Share supports up to 50,000,000,000
+bytes through this API, although Telegram's own limits still apply. Set
+`MAX_FILE_SIZE` and `TRANSFER_TIMEOUT` for your connection speed. At 1 MB/s,
+2 GB takes about 34 minutes, exceeding the default 30-minute deadline.
+The deadline covers the whole transfer or album, including retries.
+Files are retained for up to 14 days, and the host
 allows 40 uploads per hour per IP address. Programs and web pages such as `.exe`,
 `.apk`, `.html`, and `.svg` must be archived first. These are host restrictions,
 documented in the [File2Share API guide](https://www.file2share.us/cli).
@@ -65,9 +71,16 @@ Custom hosts must accept raw PUT uploads at `/<filename>` and return a URL in th
 rules depend on the selected host.
 
 Configure the final endpoint because upload redirects are rejected. Files are
-not automatically retried or resumed after a failure. A local test receiver can
+retried for temporary HTTP and connection failures, up to three attempts.
+Confirmed numbered parts are preserved while the failed part is replayed.
+Resume state lasts for the running job, not across bot restarts. A local test receiver can
 return loopback URLs that only work on the bot's machine. See
 [local test downloads](architecture.md#local-test-downloads).
+
+Additional PUT and WebDAV profiles are described in [commands and providers](features.md).
+The `<SESSION_PATH>.history.sqlite3` database, stored beside the Telegram session, contains
+private links and deletion capabilities. Protect the data directory and backups.
+It stores recent metadata, not file bytes or encryption keys.
 
 ## Docker Compose
 

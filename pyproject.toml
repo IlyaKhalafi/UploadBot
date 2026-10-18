@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "telegram-uploadbot"
-version = "2.0.0"
+version = "2.1.0"
 description = "Stream Telegram files to File2Share without temporary files."
 readme = "README.md"
 requires-python = ">=3.11"

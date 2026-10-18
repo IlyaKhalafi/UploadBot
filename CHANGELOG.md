@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.1.0
+
+- Support File2Share's numbered-part API for large files, with a 2 GB default limit.
+- Retry temporary failures and resume failed parts from Telegram byte ranges.
+- Add selectable PUT and WebDAV profiles with explicitly enabled fallback.
+- Keep private upload history with filename search, expiry estimates, and deletion.
+- Upload albums sequentially and preserve completed links when cancelled.
+- Add optional streaming AES-256-GCM-SIV encryption and `uploadbot-decrypt`.
+- Show speed and ETA with inline download, share, copy-link, delete, and cancel actions.
+- Keep encryption keys outside hosted files, URLs, and history metadata.
+- Apply concurrent preference changes atomically so encryption settings are preserved.
+
+Existing `.env` files keep their configured file limit. Set
+`MAX_FILE_SIZE=2000000000` to enable the new default on an existing installation.
+Increase `TRANSFER_TIMEOUT` for slow connections or large albums. History metadata
+is stored beside the Telegram session and needs the same backup protection.
+
 ## 2.0.0
 
 - Use File2Share by default, return its direct download URLs, and enforce its

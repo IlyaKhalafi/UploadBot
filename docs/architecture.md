@@ -36,9 +36,11 @@ URL, while the `X-Direct-Url` header identifies the actual file. UploadBot prefe
 and validates that direct URL so the returned link works in a browser or a
 download client. Compatible custom hosts can return a plain URL in the body.
 
-Each file uses one HTTP request. The default limit is 95,000,000 bytes to fit
-File2Share's 95 MB request limit. Its separate chunked API for larger files is
-not implemented. The host controls retention and applies its own rate limits.
+Small files use one PUT request. Files over 95,000,000 bytes use File2Share's
+numbered-part API. Each confirmed part remains on the host while a failed part
+is replayed from the corresponding Telegram byte range. The default limit is
+2 GB. Encryption wraps the source in independently authenticated 512 KiB frames
+that can also be replayed by range. The host controls retention and rate limits.
 See the [File2Share API guide](https://www.file2share.us/cli).
 
 The transfer starts uploading before the Telegram download completes, removing
@@ -60,9 +62,10 @@ The upload request uses the declared file length and validates the actual source
 byte count. Non-success HTTP status codes, invalid URL responses, oversized
 response bodies, transport errors, and incomplete streams produce a failed
 transfer rather than a success link. Redirects are rejected because streamed
-bodies cannot safely be replayed. There is no automatic upload retry or resume;
-send the file again after an error. A server may retain a partial upload after
-cancellation or a network error, depending on its implementation.
+bodies must be reopened explicitly for each attempt. Temporary failures retry
+with bounded backoff, preserving confirmed numbered parts. Resume state lasts
+for the running job. A server may retain a partial upload after cancellation or
+a network error. See [failure handling](features.md#retries-and-progress).
 
 Progress edits are throttled to at most once every four seconds per job. A deleted
 status message or Telegram edit rate limit does not abort the file transfer.

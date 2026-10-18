@@ -1,14 +1,15 @@
 <p align="center">
-  <img src="docs/banner.svg" alt="UploadBot. Files in. Links out." width="100%">
+  <img src="docs/logo.svg" alt="UploadBot logo" width="144" height="144">
 </p>
+
+<h1 align="center">UploadBot</h1>
+<p align="center">Files in. Links out.</p>
 
 <p align="center">
   <a href="https://github.com/IlyaKhalafi/UploadBot/actions/workflows/ci.yml"><img src="https://github.com/IlyaKhalafi/UploadBot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/python-3.11%2B-3776ab?logo=python&amp;logoColor=white" alt="Python 3.11+">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-78dba9" alt="MIT license"></a>
 </p>
-
-# UploadBot
 
 **Turn Telegram files into shareable links as they stream.** Send a document,
 photo, video, or audio file to the bot and receive a public download URL from

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">UploadBot logo</title>
+  <desc id="desc">An upload arrow inside a chat bubble, with three blocks representing streamed bytes.</desc>
+  <rect x="16" y="16" width="224" height="224" rx="56" fill="#101d37"/>
+  <path d="M72 68h112a16 16 0 0 1 16 16v80a16 16 0 0 1-16 16h-62l-34 24v-24H72a16 16 0 0 1-16-16V84a16 16 0 0 1 16-16Z" fill="none" stroke="#5fe1f1" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M128 148V96m-22 22 22-22 22 22" fill="none" stroke="#f5f8ff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#a8f0b0">
+    <rect x="100" y="158" width="12" height="10" rx="3"/>
+    <rect x="122" y="158" width="12" height="10" rx="3"/>
+    <rect x="144" y="158" width="12" height="10" rx="3"/>
+  </g>
+</svg>

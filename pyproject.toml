@@ -12,6 +12,7 @@ license = "MIT"
 dependencies = [
   "Telethon==1.45.0",
   "aiohttp==3.14.5",
+  "cryptography==50.0.2",
   "python-dotenv==1.2.4",
 ]
 
@@ -30,6 +31,7 @@ dev = [
 
 [project.scripts]
 uploadbot = "uploadbot.app:main"
+uploadbot-decrypt = "uploadbot.encryption:main"
 
 [project.urls]
 Repository = "https://github.com/IlyaKhalafi/UploadBot"

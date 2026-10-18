@@ -1,4 +1,2 @@
-pyrogram
-# --------- Optional For Speedup  --------- #
-tgcrypto
-uvloop
+# Runtime dependencies are defined and pinned in pyproject.toml.
+-e .

@@ -1,12 +1,14 @@
 """Owner-scoped history, preferences, and inline file actions."""
 
 import asyncio
+import logging
 import sqlite3
+from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime
 from urllib.parse import urlencode
 
-from telethon import Button
+from telethon import Button, errors
 
 from uploadbot.config import Settings
 from uploadbot.errors import TransferError
@@ -15,6 +17,8 @@ from uploadbot.models import StoredUpload
 from uploadbot.progress import human_size
 from uploadbot.providers import ProviderRegistry
 from uploadbot.urls import public_link
+
+logger = logging.getLogger(__name__)
 
 
 def file_buttons(record: StoredUpload):
@@ -142,6 +146,14 @@ class Commands:
             ) from None
 
     async def callback(self, event) -> None:
+        try:
+            await self._callback(event)
+        except (sqlite3.Error, errors.RPCError, ValueError) as exc:
+            logger.warning("File action failed (%s)", type(exc).__name__)
+            with suppress(errors.RPCError):
+                await event.answer("Action failed. Please try again later.", alert=True)
+
+    async def _callback(self, event) -> None:
         user_id = event.sender_id
         if not event.is_private or user_id is None or event.chat_id != user_id:
             await event.answer("Use these buttons in your private chat.", alert=True)

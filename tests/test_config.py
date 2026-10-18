@@ -1,3 +1,4 @@
+import json
 import os
 
 import pytest
@@ -17,6 +18,7 @@ def clean_environment(monkeypatch):
         "TRANSFER_TIMEOUT",
         "ALLOWED_USER_IDS",
         "SESSION_PATH",
+        "UPLOAD_PROVIDERS",
     )
     for name in names:
         monkeypatch.delenv(name, raising=False)
@@ -29,7 +31,7 @@ def clean_environment(monkeypatch):
 def test_defaults_and_secret_redaction():
     settings = Settings.from_env()
     assert settings.transfer_url == "https://file2share.us"
-    assert settings.max_file_size == 95_000_000
+    assert settings.max_file_size == 2_000_000_000
     assert settings.max_transfers == 3
     assert settings.allowed_user_ids == frozenset()
     assert os.environ["BOT_TOKEN"] not in repr(settings)
@@ -76,11 +78,49 @@ def test_custom_server_and_allowlist(monkeypatch):
 )
 def test_file2share_limit_is_checked_before_startup(url, monkeypatch):
     monkeypatch.setenv("TRANSFER_URL", url)
-    monkeypatch.setenv("MAX_FILE_SIZE", "95000001")
-    with pytest.raises(ValueError, match="MAX_FILE_SIZE.*95000000.*File2Share"):
+    monkeypatch.setenv("MAX_FILE_SIZE", "50000000001")
+    with pytest.raises(ValueError, match="MAX_FILE_SIZE.*50000000000.*File2Share"):
         Settings.from_env()
 
 
 def test_file2share_limit_can_be_lowered(monkeypatch):
     monkeypatch.setenv("MAX_FILE_SIZE", "1000000")
     assert Settings.from_env().max_file_size == 1_000_000
+
+
+def test_provider_profiles_normalize_urls_and_hide_credentials(monkeypatch):
+    monkeypatch.setenv(
+        "UPLOAD_PROVIDERS",
+        json.dumps(
+            [
+                {
+                    "name": "vault",
+                    "kind": "webdav",
+                    "url": "https://dav.example/files/",
+                    "public_url": "https://public.example/files",
+                    "headers": {"Authorization": "Bearer private"},
+                }
+            ]
+        ),
+    )
+    settings = Settings.from_env()
+    assert [p.name for p in settings.provider_configs()] == ["default", "vault"]
+    assert settings.providers[0].url == "https://dav.example/files"
+    assert "Bearer private" not in repr(settings)
+    assert "Bearer private" not in repr(settings.providers[0])
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "{}",
+        "[null]",
+        "invalid",
+        '[{"name":"auto"}]',
+        '[{"name":"default","kind":"put","url":"https://example.com"}]',
+    ],
+)
+def test_invalid_provider_profiles_have_safe_errors(value, monkeypatch):
+    monkeypatch.setenv("UPLOAD_PROVIDERS", value)
+    with pytest.raises(ValueError, match="UPLOAD_PROVIDERS"):
+        Settings.from_env()

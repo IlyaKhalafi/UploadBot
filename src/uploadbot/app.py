@@ -12,7 +12,9 @@ from telethon import TelegramClient, events
 
 from uploadbot.bot import UploadBot
 from uploadbot.config import Settings
-from uploadbot.transfer import TransferClient
+from uploadbot.history import HistoryStore
+from uploadbot.providers import Provider, ProviderRegistry
+from uploadbot.service import UploadService
 
 
 async def run(settings: Settings) -> None:
@@ -29,9 +31,19 @@ async def run(settings: Settings) -> None:
         sock_read=60,
     )
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        transfer = TransferClient(session, settings.transfer_url, settings.max_file_size)
-        bot = UploadBot(client, transfer, settings)
+        registry = ProviderRegistry(
+            [
+                Provider(session, config, settings.max_file_size)
+                for config in settings.provider_configs()
+            ]
+        )
+        history = await HistoryStore.open(
+            settings.session_path.with_name(settings.session_path.name + ".history.sqlite3")
+        )
+        bot = UploadBot(client, UploadService(client, registry), settings, history)
         client.add_event_handler(bot.handle, events.NewMessage(incoming=True))
+        client.add_event_handler(bot.handle_album, events.Album())
+        client.add_event_handler(bot.commands.callback, events.CallbackQuery())
         try:
             await client.start(bot_token=settings.bot_token)
             me = await client.get_me()

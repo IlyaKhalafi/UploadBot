@@ -49,7 +49,7 @@ def upload_result(
             raise TransferError("Upload server returned an invalid download link.") from None
     else:
         link = link.strip()
-    if not valid_link(link):
+    if not valid_link(link) or len(link.encode("utf-8")) > 2048:
         raise TransferError("Upload server returned an invalid download link.")
     deletion = response.headers.get("x-delete-url") or response.headers.get("x-url-delete")
     if deletion and not same_origin(deletion, base_url):

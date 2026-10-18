@@ -4,49 +4,61 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
+import sqlite3
+from collections.abc import Callable
+from contextlib import suppress
 from pathlib import PurePosixPath
 from urllib.parse import unquote, urlsplit
 
-from telethon import TelegramClient, errors, events, types
+from telethon import Button, TelegramClient, errors, events, types
 from telethon.tl.custom import Message
 
+from uploadbot.commands import Commands, expiry_text, file_buttons
 from uploadbot.config import Settings
-from uploadbot.transfer import TransferClient, TransferError, stream_telegram
+from uploadbot.errors import TransferError
+from uploadbot.history import HistoryStore
+from uploadbot.progress import ProgressMeter, human_size
+from uploadbot.service import UploadService
 from uploadbot.urls import public_link
 
 logger = logging.getLogger(__name__)
 
 
-def human_size(size: int) -> str:
-    value = float(size)
-    for unit in ("B", "KiB", "MiB", "GiB"):
-        if value < 1024 or unit == "GiB":
-            return f"{value:.1f} {unit}"
-        value /= 1024
-    raise AssertionError("unreachable")
-
-
 class UploadBot:
     def __init__(
-        self, client: TelegramClient, transfer: TransferClient, settings: Settings
+        self,
+        client: TelegramClient,
+        service: UploadService,
+        settings: Settings,
+        history: HistoryStore,
     ) -> None:
         self.client = client
-        self.transfer = transfer
+        self.service = service
+        self.history = history
         self.settings = settings
         self.username = ""
         self.jobs: dict[int, asyncio.Task[None]] = {}
+        self.commands = Commands(history, service.registry, settings, self.jobs)
 
     async def handle(self, event: events.NewMessage.Event) -> None:
         if not event.is_private or event.sender_id is None:
             return
+        if getattr(event.message, "grouped_id", None):
+            return  # Album events own grouped media, avoiding duplicate uploads.
         user_id = event.sender_id
         if self.settings.allowed_user_ids and user_id not in self.settings.allowed_user_ids:
             await event.reply("This bot is private.")
             return
         text = (event.raw_text or "").strip()
         if text.startswith("/"):
-            await self.handle_command(event, text)
+            try:
+                await self.handle_command(event, text)
+            except TransferError as exc:
+                await event.reply(str(exc), parse_mode=None)
+            except (sqlite3.Error, errors.RPCError, ValueError) as exc:
+                logger.warning("Command failed (%s)", type(exc).__name__)
+                with suppress(errors.RPCError):
+                    await event.reply("Command failed. Please try again later.")
             return
 
         # Link previews can expose message.file too; only uploaded media are files.
@@ -84,10 +96,43 @@ class UploadBot:
         finally:
             self.jobs.pop(user_id, None)
 
+    async def handle_album(self, event: events.Album.Event) -> None:
+        if not event.is_private or event.sender_id is None:
+            return
+        user_id = event.sender_id
+        if self.settings.allowed_user_ids and user_id not in self.settings.allowed_user_ids:
+            await event.reply("This bot is private.")
+            return
+        messages = event.messages
+        if not messages or any(
+            not m.file or not m.file.size or m.file.size > self.settings.max_file_size
+            for m in messages
+        ):
+            await event.reply(
+                "Every album file must be nonempty and at most "
+                f"{human_size(self.settings.max_file_size)}."
+            )
+            return
+        if user_id in self.jobs or len(self.jobs) >= self.settings.max_transfers:
+            await event.reply("Transfer slots are busy. Use /cancel or try again shortly.")
+            return
+        task = asyncio.current_task()
+        if task is None:
+            raise RuntimeError("Albums must run in an asyncio task")
+        self.jobs[user_id] = task
+        try:
+            await self.run_transfer(event, "", is_upload=True, messages=messages)
+        finally:
+            self.jobs.pop(user_id, None)
+
     async def handle_command(self, event: events.NewMessage.Event, text: str) -> None:
         token = text.split(maxsplit=1)[0][1:].lower()
         command, _, address = token.partition("@")
         if address and address != self.username.lower():
+            return
+        parts = text.split(maxsplit=1)
+        argument = parts[1] if len(parts) > 1 else ""
+        if await self.commands.handle(event, command, argument):
             return
         if command in {"start", "help"}:
             upload_host = urlsplit(self.settings.transfer_url).hostname
@@ -96,6 +141,12 @@ class UploadBot:
                 f"Send a file to stream it to {upload_host}.\n"
                 "Send a public HTTP(S) file link to receive it on Telegram.\n\n"
                 f"Files up to {human_size(self.settings.max_file_size)}\n"
+                "/files [search] · recent uploads\n"
+                "/link ID · retrieve a link\n"
+                "/delete ID · delete a hosted file\n"
+                "/provider [NAME|auto] · choose a host\n"
+                "/expiry [1-14] · retention for new files\n"
+                "/encrypt [on|off] · encrypt new uploads\n"
                 "/cancel to stop your current transfer\n"
                 "/help to show this message\n\n"
                 "Uploaded files are shared through a link. Retention depends on the server.",
@@ -113,16 +164,34 @@ class UploadBot:
             await event.reply("Send a file or a public file link. Use /help for details.")
 
     async def run_transfer(
-        self, event: events.NewMessage.Event, text: str, *, is_upload: bool
+        self, event, text: str, *, is_upload: bool, messages: list[Message] | None = None
     ) -> None:
         status = None
+
+        def committed() -> None:
+            nonlocal status
+            status = None
+
         try:
             status = await event.reply(
-                "Streaming file…" if is_upload else "Sending link to Telegram…"
+                "Streaming file…" if is_upload else "Sending link to Telegram…",
+                buttons=Button.inline("Cancel", b"cancel"),
             )
             async with asyncio.timeout(self.settings.transfer_timeout):
                 if is_upload:
-                    await self.upload_file(event.message, status)
+                    items = messages or [event.message]
+                    for index, message in enumerate(items):
+                        current = (
+                            status
+                            if index == 0
+                            else await event.reply(
+                                f"Streaming file {index + 1} of {len(items)}…",
+                                buttons=Button.inline("Cancel", b"cancel"),
+                            )
+                        )
+                        status = current
+                        await self.upload_file(message, current, event, on_uploaded=committed)
+                        status = None
                 else:
                     await self.send_url(event, text, status)
         except asyncio.CancelledError:
@@ -149,26 +218,82 @@ class UploadBot:
             logger.error("Unexpected transfer failure (%s)", type(exc).__name__)
             await self.show_error(event, status, "Transfer failed. Please try again later.")
 
-    async def upload_file(self, message: Message, status: Message) -> None:
-        last_update = time.monotonic()
+    async def upload_file(
+        self,
+        message: Message,
+        status: Message,
+        event,
+        *,
+        on_uploaded: Callable[[], None] | None = None,
+    ) -> None:
+        meter = ProgressMeter()
 
         async def progress(sent: int, total: int) -> None:
-            nonlocal last_update
-            now = time.monotonic()
-            if now - last_update >= 4:
-                last_update = now
-                await self.edit_status(
-                    status, f"Streaming… {sent / total:.0%} · {human_size(sent)}"
-                )
+            text = meter.update(sent, total)
+            if text:
+                await self.edit_status(status, text, buttons=Button.inline("Cancel", b"cancel"))
 
-        link = await stream_telegram(self.client, message, self.transfer, progress)
+        provider, options = await self.history.preferences(
+            event.sender_id, self.service.registry.default
+        )
+
+        async def on_key(key: str) -> None:
+            await event.reply(
+                f"Decryption key for {message.file.name or 'this file'}\n\n{key}\n\n"
+                "Keep this message. Use uploadbot-decrypt after downloading the .ubenc file. "
+                "The key is not saved in history. Upload will start now.",
+                parse_mode=None,
+                link_preview=False,
+            )
+
+        completed = await self.service.upload(message, provider, options, progress, on_key=on_key)
+        if on_uploaded:
+            on_uploaded()
+        receipt = asyncio.create_task(self.finish_upload(event, status, completed.result))
+        try:
+            await asyncio.shield(receipt)
+        except asyncio.CancelledError:
+            while not receipt.done():
+                try:
+                    await asyncio.shield(receipt)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            if not receipt.cancelled():
+                receipt.exception()
+            raise
+
+    async def finish_upload(self, event, status: Message, result) -> None:
+        link = result.url
+        try:
+            record = await self.history.add(event.sender_id, result)
+        except (sqlite3.Error, ValueError):
+            record = None
         notice = ""
         if not public_link(link):
             notice = (
                 "This link is on a private network. Open it from the bot server "
                 "or use an SSH tunnel.\n\n"
             )
-        await self.edit_status(status, f"Upload complete ✓\n\n{notice}{link}")
+        if record:
+            text = f"Upload complete ✓ · {record.id[:8]}\n{expiry_text(record)}\n\n{notice}{link}"
+        else:
+            text = (
+                f"Upload complete ✓\nHistory could not be saved. Keep this link.\n\n{notice}{link}"
+            )
+        try:
+            await status.edit(
+                text,
+                parse_mode=None,
+                link_preview=False,
+                buttons=file_buttons(record) if record else None,
+            )
+        except errors.RPCError:
+            try:
+                await status.edit(text, parse_mode=None, link_preview=False, buttons=None)
+            except errors.RPCError:
+                await event.reply(text, parse_mode=None, link_preview=False)
 
     async def send_url(self, event: events.NewMessage.Event, url: str, status: Message) -> None:
         # Telegram fetches the URL; the bot host never downloads it locally.
@@ -180,9 +305,9 @@ class UploadBot:
         await self.edit_status(status, "Sent to Telegram ✓")
 
     @staticmethod
-    async def edit_status(status: Message, text: str) -> None:
+    async def edit_status(status: Message, text: str, *, buttons=None) -> None:
         try:
-            await status.edit(text, parse_mode=None, link_preview=False)
+            await status.edit(text, parse_mode=None, link_preview=False, buttons=buttons)
         except errors.RPCError:
             pass  # Deleted status messages / edit rate limits must not interrupt an upload.
 

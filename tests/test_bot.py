@@ -1,4 +1,5 @@
 import asyncio
+import sqlite3
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -8,6 +9,8 @@ from telethon import errors, types
 
 from uploadbot.bot import UploadBot
 from uploadbot.config import Settings
+from uploadbot.models import StoredUpload, UploadOptions, UploadResult
+from uploadbot.service import CompletedUpload
 from uploadbot.transfer import TransferError
 from uploadbot.urls import public_link
 
@@ -29,7 +32,12 @@ def event(text="", file=None, user_id=1):
 
 def bot(**settings):
     config = replace(Settings(123, "0" * 32, "123:test"), **settings)
-    return UploadBot(SimpleNamespace(send_file=AsyncMock()), None, config)
+    registry = SimpleNamespace(default="default", providers={"default": None})
+    service = SimpleNamespace(registry=registry, upload=AsyncMock())
+    history = SimpleNamespace(
+        preferences=AsyncMock(return_value=("default", UploadOptions())), add=AsyncMock()
+    )
+    return UploadBot(SimpleNamespace(send_file=AsyncMock()), service, config, history)
 
 
 async def test_commands_do_not_download():
@@ -63,7 +71,7 @@ async def test_private_chat_and_allowlist():
     incoming.reply.assert_not_awaited()
 
 
-@pytest.mark.parametrize("size", [0, 95_000_001])
+@pytest.mark.parametrize("size", [0, 2_000_000_001])
 async def test_all_media_types_obey_size_limit(size):
     app = bot()
     incoming = event(file=SimpleNamespace(size=size))
@@ -99,9 +107,11 @@ async def test_link_preview_is_not_uploaded_as_a_file():
         ("http://192.168.1.10/files/a", True),
     ],
 )
-async def test_upload_reply_explains_private_download_links(link, local, monkeypatch):
+async def test_upload_reply_explains_private_download_links(link, local):
     app = bot()
-    monkeypatch.setattr("uploadbot.bot.stream_telegram", AsyncMock(return_value=link))
+    result = UploadResult(link, "file.bin", 10, "default")
+    app.service.upload.return_value = CompletedUpload(result)
+    app.history.add.return_value = StoredUpload("a" * 32, 1, result, 0)
     incoming = event(file=SimpleNamespace(size=10))
     await app.handle(incoming)
     reply = incoming.reply.return_value.edit.call_args.args[0]
@@ -121,6 +131,111 @@ async def test_busy_and_per_user_limits():
     await app.handle(incoming)
     assert "busy" in incoming.reply.call_args.args[0]
     app.client.send_file.assert_not_awaited()
+
+
+async def test_album_uploads_each_file_once_and_releases_slot():
+    app = bot()
+    items = [event(file=SimpleNamespace(size=10)).message for _ in range(3)]
+    for item in items:
+        item.grouped_id = 123
+    incoming = event(file=SimpleNamespace(size=10))
+    incoming.message.grouped_id = 123
+    await app.handle(incoming)
+    incoming.reply.assert_not_awaited()
+    incoming.messages = items
+    app.upload_file = AsyncMock()
+    await app.handle_album(incoming)
+    assert [c.args[0] for c in app.upload_file.call_args_list] == items
+    assert not app.jobs
+
+
+async def test_album_cancellation_stops_remaining_files():
+    app = bot()
+    started = asyncio.Event()
+    completed = []
+
+    async def upload(message, *args, **kwargs):
+        if completed:
+            started.set()
+            await asyncio.Event().wait()
+        completed.append(message)
+
+    app.upload_file = upload
+    incoming = event()
+    incoming.messages = [event(file=SimpleNamespace(size=10)).message for _ in range(3)]
+    task = asyncio.create_task(app.handle_album(incoming))
+    await asyncio.wait_for(started.wait(), 2)
+    await app.handle(event("/cancel"))
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert len(completed) == 1
+    assert not app.jobs
+
+
+async def test_history_failure_does_not_hide_a_completed_download_link():
+    app = bot()
+    result = UploadResult("https://files.example/saved", "file.bin", 10, "default")
+    app.service.upload.return_value = CompletedUpload(result)
+    app.history.add.side_effect = sqlite3.OperationalError("disk unavailable")
+    incoming = event(file=SimpleNamespace(size=10))
+    await app.handle(incoming)
+    text = incoming.reply.return_value.edit.call_args.args[0]
+    assert "Upload complete" in text and result.url in text
+    assert "History could not be saved" in text
+
+
+async def test_cancelling_after_host_success_preserves_receipt():
+    app = bot()
+    result = UploadResult("https://files.example/complete", "file.bin", 10, "default")
+    app.service.upload.return_value = CompletedUpload(result)
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def save(*args):
+        started.set()
+        await release.wait()
+        return StoredUpload("a" * 32, 1, result, 0)
+
+    app.history.add.side_effect = save
+    incoming = event(file=SimpleNamespace(size=10))
+    task = asyncio.create_task(app.handle(incoming))
+    await asyncio.wait_for(started.wait(), 2)
+    task.cancel()
+    await asyncio.sleep(0)
+    assert not task.done()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    text = incoming.reply.return_value.edit.call_args.args[0]
+    assert "Upload complete" in text and result.url in text
+    assert not app.jobs
+
+
+async def test_final_receipt_falls_back_to_new_reply_when_edits_fail():
+    app = bot()
+    result = UploadResult("https://files.example/complete", "file.bin", 10, "default")
+    app.history.add.return_value = StoredUpload("a" * 32, 1, result, 0)
+    incoming = event()
+    status = SimpleNamespace(edit=AsyncMock(side_effect=errors.MessageIdInvalidError(None)))
+    await app.finish_upload(incoming, status, result)
+    assert status.edit.await_count == 2
+    assert result.url in incoming.reply.call_args.args[0]
+
+
+async def test_failed_next_album_status_cannot_overwrite_completed_link():
+    app = bot()
+    incoming = event()
+    incoming.messages = [event(file=SimpleNamespace(size=10)).message for _ in range(2)]
+    first = SimpleNamespace(edit=AsyncMock())
+    incoming.reply.side_effect = [first, errors.MessageIdInvalidError(None), SimpleNamespace()]
+
+    async def upload(message, status, event, *, on_uploaded):
+        await status.edit("completed link")
+        on_uploaded()
+
+    app.upload_file = upload
+    await app.handle_album(incoming)
+    first.edit.assert_awaited_once_with("completed link")
+    assert not app.jobs
 
 
 async def test_cancel_releases_slot():

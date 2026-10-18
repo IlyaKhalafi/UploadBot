@@ -62,7 +62,7 @@ async def test_private_chat_and_allowlist():
     incoming.reply.assert_not_awaited()
 
 
-@pytest.mark.parametrize("size", [0, 200_000_001])
+@pytest.mark.parametrize("size", [0, 95_000_001])
 async def test_all_media_types_obey_size_limit(size):
     app = bot()
     incoming = event(file=SimpleNamespace(size=size))

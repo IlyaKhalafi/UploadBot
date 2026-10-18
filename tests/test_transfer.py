@@ -44,6 +44,31 @@ async def test_upload_starts_before_telegram_finishes(server_factory, session):
     progress.assert_awaited()
 
 
+@pytest.mark.parametrize("body", [b"https://files.example/download/page", b"<html>page</html>"])
+async def test_file2share_direct_url_takes_precedence(body, server_factory, session):
+    direct = "https://files.example/download/video.mp4?signature=abc"
+
+    async def handler(request):
+        assert await request.read() == b"hello"
+        return web.Response(status=201, body=body, headers={"X-Direct-Url": direct})
+
+    transfer = TransferClient(session, await server_factory(handler), 100)
+    assert await transfer.upload(chunks(b"hello"), "video.mp4", 5) == direct
+
+
+@pytest.mark.parametrize("direct", ["", "file:///etc/passwd", "https://user:password@host/a"])
+async def test_file2share_invalid_direct_url_is_rejected(direct, server_factory, session):
+    async def handler(request):
+        await request.read()
+        return web.Response(
+            text="https://files.example/download/page", headers={"X-Direct-Url": direct}
+        )
+
+    transfer = TransferClient(session, await server_factory(handler), 100)
+    with pytest.raises(TransferError, match="invalid download link"):
+        await transfer.upload(chunks(b"hello"), "a", 5)
+
+
 @pytest.mark.parametrize("status", [301, 307, 308, 403, 413, 429, 500, 503])
 async def test_http_errors_and_redirects_are_not_replayed(status, server_factory, session):
     calls = 0

@@ -58,9 +58,10 @@ class UploadBot:
             if address and address != self.username.lower():
                 return
             if command in {"start", "help"}:
+                upload_host = urlsplit(self.settings.transfer_url).hostname
                 await event.reply(
                     "UploadBot · files in, links out\n\n"
-                    "Send a file to stream it to the configured transfer.sh server.\n"
+                    f"Send a file to stream it to {upload_host}.\n"
                     "Send a public HTTP(S) file link to receive it on Telegram.\n\n"
                     f"Files up to {human_size(self.settings.max_file_size)}\n"
                     "/cancel to stop your current transfer\n"

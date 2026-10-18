@@ -28,7 +28,8 @@ def clean_environment(monkeypatch):
 
 def test_defaults_and_secret_redaction():
     settings = Settings.from_env()
-    assert settings.max_file_size == 200_000_000
+    assert settings.transfer_url == "https://file2share.us"
+    assert settings.max_file_size == 95_000_000
     assert settings.max_transfers == 3
     assert settings.allowed_user_ids == frozenset()
     assert os.environ["BOT_TOKEN"] not in repr(settings)
@@ -63,6 +64,21 @@ def test_invalid_settings(name, value, monkeypatch):
 def test_custom_server_and_allowlist(monkeypatch):
     monkeypatch.setenv("TRANSFER_URL", "https://files.example/prefix/")
     monkeypatch.setenv("ALLOWED_USER_IDS", "123, 456")
+    monkeypatch.setenv("MAX_FILE_SIZE", "200000000")
     settings = Settings.from_env()
     assert settings.transfer_url == "https://files.example/prefix"
     assert settings.allowed_user_ids == frozenset({123, 456})
+    assert settings.max_file_size == 200_000_000
+
+
+@pytest.mark.parametrize("url", ["https://file2share.us", "https://www.file2share.us"])
+def test_file2share_limit_is_checked_before_startup(url, monkeypatch):
+    monkeypatch.setenv("TRANSFER_URL", url)
+    monkeypatch.setenv("MAX_FILE_SIZE", "95000001")
+    with pytest.raises(ValueError, match="MAX_FILE_SIZE.*95000000.*File2Share"):
+        Settings.from_env()
+
+
+def test_file2share_limit_can_be_lowered(monkeypatch):
+    monkeypatch.setenv("MAX_FILE_SIZE", "1000000")
+    assert Settings.from_env().max_file_size == 1_000_000

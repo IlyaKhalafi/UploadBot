@@ -109,12 +109,18 @@ class TransferClient:
                             raise TransferError("Upload server returned an oversized response.")
                     if sent != size:
                         raise TransferError("Upload server responded before the file was complete.")
-                    try:
-                        link = result.decode("utf-8").strip()
-                    except UnicodeDecodeError:
-                        raise TransferError(
-                            "Upload server returned an invalid download link."
-                        ) from None
+                    # File2Share returns a page in the body and the actual file URL
+                    # in this header. Other compatible hosts can return just a URL.
+                    link = response.headers.get("X-Direct-Url")
+                    if link is None:
+                        try:
+                            link = result.decode("utf-8").strip()
+                        except UnicodeDecodeError:
+                            raise TransferError(
+                                "Upload server returned an invalid download link."
+                            ) from None
+                    else:
+                        link = link.strip()
                     if not valid_link(link):
                         raise TransferError("Upload server returned an invalid download link.")
                     return link

@@ -1,0 +1,17 @@
+name: Bug report
+description: Report a reproducible problem with UploadBot.
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Include what you expected and the steps to reproduce. Remove tokens and private links.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Python version, operating system, installation method, and transfer server software/version.
+    validations:
+      required: true

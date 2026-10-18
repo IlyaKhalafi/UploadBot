@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" role="img" aria-labelledby="title desc">
+  <title id="title">UploadBot. Files in. Links out.</title>
+  <desc id="desc">Telegram files stream through UploadBot to a transfer server without temporary downloads.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1">
+      <stop stop-color="#101d37"/>
+      <stop offset="1" stop-color="#123c4a"/>
+    </linearGradient>
+    <linearGradient id="accent"><stop stop-color="#5fe1f1"/><stop offset="1" stop-color="#a8f0b0"/></linearGradient>
+  </defs>
+  <rect width="1200" height="330" rx="24" fill="url(#bg)"/>
+  <circle cx="1080" cy="50" r="180" fill="#5fe1f1" opacity=".04"/>
+  <g font-family="system-ui, -apple-system, sans-serif">
+    <text x="64" y="88" fill="#7de2e6" font-size="16" font-weight="600" letter-spacing="4">TELEGRAM → THE WEB</text>
+    <text x="60" y="158" fill="#f5f8ff" font-size="62" font-weight="750">UploadBot</text>
+    <text x="64" y="206" fill="#d1e4ee" font-size="25">Files in. Links out.</text>
+    <text x="64" y="267" fill="#95b8c9" font-size="17">Streaming transfers · Bounded buffers · No temporary files</text>
+    <g transform="translate(738 112)" stroke="url(#accent)" stroke-width="3" fill="none">
+      <rect width="66" height="82" rx="10"/>
+      <path d="M16 25h32M16 40h32M16 55h21"/>
+      <path d="M88 40h115m-12-12 12 12-12 12"/>
+      <rect x="228" y="1" width="98" height="80" rx="12"/>
+      <path d="m250 48 13-13a11 11 0 0 1 16 16l-4 4m24-24-13 13a11 11 0 0 1-16-16l4-4"/>
+    </g>
+    <text x="738" y="230" fill="#95b8c9" font-size="15">Telegram</text>
+    <text x="965" y="230" fill="#95b8c9" font-size="15">Shareable URL</text>
+  </g>
+</svg>

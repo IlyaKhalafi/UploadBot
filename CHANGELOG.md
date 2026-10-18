@@ -15,6 +15,8 @@
 - Load validated environment settings and support an optional user allowlist.
 - Replace interactive startup and Replit self-pinging with standard process hosting.
 - Add Docker Compose, a full dependency lock, CI, regression tests, and contributor docs.
+- Package runtime code under `src/uploadbot` and use uv for installs, builds,
+  development tools, Docker, and CI.
 
 ### Migrating from 1.x
 
@@ -26,3 +28,7 @@ are not compatible with Telethon. The default new session lives at
 Set `TRANSFER_URL=https://file2share.us` and `MAX_FILE_SIZE=95000000` in `.env`.
 File2Share retains uploads for up to 14 days. Custom PUT upload hosts remain
 supported through `TRANSFER_URL`, with retention controlled by that host.
+
+Run `uv sync --locked --no-dev --extra speed` and `uv run --no-sync uploadbot`.
+The root `main.py` entry point and requirements files have been removed.
+`pyproject.toml` and `uv.lock` define the installation.

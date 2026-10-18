@@ -1,2 +1,0 @@
-# Runtime dependencies are defined and pinned in pyproject.toml.
--e .

@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=77"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build==0.13.1"]
+build-backend = "uv_build"
 
 [project]
 name = "telegram-uploadbot"
@@ -20,6 +20,7 @@ speed = [
   "cryptg==0.6.0",
   "uvloop==0.23.0; sys_platform != 'win32' and platform_python_implementation == 'CPython'",
 ]
+[dependency-groups]
 dev = [
   "pytest==9.1.1",
   "pytest-asyncio==1.4.0",
@@ -34,9 +35,8 @@ uploadbot = "uploadbot.app:main"
 Repository = "https://github.com/IlyaKhalafi/UploadBot"
 Issues = "https://github.com/IlyaKhalafi/UploadBot/issues"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-include = ["uploadbot*"]
+[tool.uv.build-backend]
+module-name = "uploadbot"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

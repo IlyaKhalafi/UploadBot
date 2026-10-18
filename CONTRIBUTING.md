@@ -8,11 +8,11 @@ reports, and improvements to streaming reliability or setup instructions.
 Use Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync --locked --extra dev --extra speed
+uv sync --locked --extra speed
 uv run --no-sync ruff check .
 uv run --no-sync ruff format --check .
 uv run --no-sync pytest -q
-uv run --no-sync pip-audit -r requirements.lock --require-hashes --disable-pip
+uv run --no-sync pip-audit --skip-editable
 ```
 
 Tests use a local HTTP server and fake Telegram messages. No bot token, Telegram
@@ -22,16 +22,20 @@ SHA-256 digest, and check bounded Python memory allocations.
 
 ## Dependency updates
 
-`pyproject.toml` defines direct dependencies; `uv.lock` locks their full dependency
-graph. `requirements.lock` is the runtime export used by Docker. After changing
-versions, regenerate both locks and run the checks above.
+`pyproject.toml` defines runtime dependencies, optional speed packages, and the
+development group. `uv.lock` locks the full dependency graph. Local installs,
+Docker builds, and CI all use that lock. After changing dependencies, update the
+lock and run the checks above. The audit checks the installed locked environment.
 
 ```bash
 uv lock --upgrade
-uv export --locked --extra speed --no-dev --no-extra dev --no-emit-project --output-file requirements.lock
+uv sync --locked --extra speed
 ```
 
 ## Pull requests
+
+Runtime code lives in `src/uploadbot`. Run the installed `uploadbot` command or
+`python -m uploadbot` through uv. Build distributions with `uv build`.
 
 Describe the problem and resulting behavior. Include reproduction steps or tests
 for streaming, cancellation, or protocol changes. Keep network buffers bounded,

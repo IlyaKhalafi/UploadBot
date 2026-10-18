@@ -1250,30 +1250,36 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+speed = [
+    { name = "cryptg" },
+    { name = "uvloop", marker = "platform_python_implementation == 'CPython' and sys_platform != 'win32'" },
+]
+
+[package.dev-dependencies]
 dev = [
     { name = "pip-audit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
 ]
-speed = [
-    { name = "cryptg" },
-    { name = "uvloop", marker = "platform_python_implementation == 'CPython' and sys_platform != 'win32'" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = "==3.14.5" },
     { name = "cryptg", marker = "extra == 'speed'", specifier = "==0.6.0" },
-    { name = "pip-audit", marker = "extra == 'dev'", specifier = "==2.10.1" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = "==9.1.1" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = "==1.4.0" },
     { name = "python-dotenv", specifier = "==1.2.4" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = "==0.17.1" },
     { name = "telethon", specifier = "==1.45.0" },
     { name = "uvloop", marker = "platform_python_implementation == 'CPython' and sys_platform != 'win32' and extra == 'speed'", specifier = "==0.23.0" },
 ]
-provides-extras = ["speed", "dev"]
+provides-extras = ["speed"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pip-audit", specifier = "==2.10.1" },
+    { name = "pytest", specifier = "==9.1.1" },
+    { name = "pytest-asyncio", specifier = "==1.4.0" },
+    { name = "ruff", specifier = "==0.17.1" },
+]
 
 [[package]]
 name = "telethon"

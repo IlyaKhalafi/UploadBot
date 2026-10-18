@@ -126,7 +126,13 @@ class UploadBot:
                     link = await stream_telegram(
                         self.client, event.message, self.transfer, progress
                     )
-                    await self.edit_status(status, f"Upload complete ✓\n\n{link}")
+                    notice = ""
+                    if not public_link(link):
+                        notice = (
+                            "This link is on a private network. Open it from the bot server "
+                            "or use an SSH tunnel.\n\n"
+                        )
+                    await self.edit_status(status, f"Upload complete ✓\n\n{notice}{link}")
                 else:
                     # Telegram fetches the external URL; the bot never downloads it locally.
                     suffix = PurePosixPath(unquote(urlsplit(text).path)).suffix.lower()

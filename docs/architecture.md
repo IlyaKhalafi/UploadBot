@@ -24,6 +24,13 @@ when the destination cannot accept more data. No application-level prefetch queu
 or temporary file grows with file size. Socket buffers and Telegram/HTTP internal
 buffers still consume memory; this is not a zero-copy implementation.
 
+The regression suite verifies streaming by holding back the final source chunk
+until the local HTTP server confirms receiving the first one. A whole-file
+buffering implementation would deadlock that test. A separate 64 MiB transfer
+checks byte integrity and bounded Python allocations. These checks describe
+UploadBot's client-side behaviour. They do not measure File2Share's internal
+buffering or establish a universal speed improvement.
+
 File2Share is the default upload host. Its response body contains a sharing page
 URL, while the `X-Direct-Url` header identifies the actual file. UploadBot prefers
 and validates that direct URL so the returned link works in a browser or a
@@ -95,8 +102,8 @@ loopback-bound receiver publicly reachable.
 
 ## Configuration and sessions
 
-Environment variables override the repository-local `.env`. No secrets belong
-in `config.py`. A persistent Telethon session is stored separately from uploaded
+Environment variables override `.env` in the working directory. No secrets belong
+in source files. A persistent Telethon session is stored separately from uploaded
 files; protect it like the bot token. On shutdown the Telegram client disconnects
 before the shared HTTP session closes. Uploaded file bytes never enter the
 session file.

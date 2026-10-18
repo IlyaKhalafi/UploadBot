@@ -6,9 +6,10 @@ from unittest.mock import AsyncMock
 import pytest
 from telethon import errors, types
 
-from uploadbot.bot import UploadBot, public_link
+from uploadbot.bot import UploadBot
 from uploadbot.config import Settings
 from uploadbot.transfer import TransferError
+from uploadbot.urls import public_link
 
 
 def event(text="", file=None, user_id=1):

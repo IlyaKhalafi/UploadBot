@@ -3,13 +3,19 @@
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
-from urllib.parse import quote, urlsplit
+from typing import TypeAlias
+from urllib.parse import quote
 
 import aiohttp
+from telethon import TelegramClient, errors
+from telethon.tl.custom import Message
+
+from uploadbot.urls import valid_link
 
 CHUNK_SIZE = 512 * 1024
 MAX_RESPONSE_SIZE = 8192
 Progress = Callable[[int, int], Awaitable[None]]
+Chunk: TypeAlias = bytes | memoryview
 
 
 class TransferError(Exception):
@@ -22,30 +28,35 @@ def safe_filename(name: str) -> str:
     return name[:180] if name and name not in {".", ".."} else "file.bin"
 
 
-def valid_link(value: str) -> bool:
-    try:
-        parts = urlsplit(value)
-        return bool(
-            parts.scheme in {"http", "https"}
-            and parts.hostname
-            and parts.port != 0
-            and not parts.username
-            and not parts.password
-            and not any(c.isspace() or ord(c) < 32 for c in value)
-        )
-    except ValueError:
-        return False
+async def response_link(response: aiohttp.ClientResponse) -> str:
+    """Read a bounded host response and prefer its direct download URL."""
+    result = bytearray()
+    async for chunk in response.content.iter_chunked(1024):
+        result.extend(chunk)
+        if len(result) > MAX_RESPONSE_SIZE:
+            raise TransferError("Upload server returned an oversized response.")
+    link = response.headers.get("X-Direct-Url")
+    if link is None:
+        try:
+            link = result.decode("utf-8").strip()
+        except UnicodeDecodeError:
+            raise TransferError("Upload server returned an invalid download link.") from None
+    else:
+        link = link.strip()
+    if not valid_link(link):
+        raise TransferError("Upload server returned an invalid download link.")
+    return link
 
 
 class TransferClient:
-    def __init__(self, session: aiohttp.ClientSession, base_url: str, max_file_size: int):
+    def __init__(self, session: aiohttp.ClientSession, base_url: str, max_file_size: int) -> None:
         self.session = session
         self.base_url = base_url.rstrip("/")
         self.max_file_size = max_file_size
 
     async def upload(
         self,
-        chunks: AsyncIterator[bytes],
+        chunks: AsyncIterator[Chunk],
         filename: str,
         size: int,
         progress: Progress | None = None,
@@ -56,7 +67,7 @@ class TransferClient:
         sent = 0
         writer: asyncio.Task | None = None
 
-        async def body() -> AsyncIterator[bytes]:
+        async def body() -> AsyncIterator[Chunk]:
             nonlocal sent, writer
             writer = asyncio.current_task()
             async for chunk in chunks:
@@ -72,7 +83,7 @@ class TransferClient:
                 raise TransferError("The Telegram download ended before the file was complete.")
 
         @asynccontextmanager
-        async def managed_body():
+        async def managed_body() -> AsyncIterator[AsyncIterator[Chunk]]:
             stream = body()
             try:
                 yield stream
@@ -102,34 +113,16 @@ class TransferClient:
                             f"Upload server returned HTTP {response.status}. "
                             "Check TRANSFER_URL or try again later."
                         )
-                    result = bytearray()
-                    async for chunk in response.content.iter_chunked(1024):
-                        result.extend(chunk)
-                        if len(result) > MAX_RESPONSE_SIZE:
-                            raise TransferError("Upload server returned an oversized response.")
+                    link = await response_link(response)
                     if sent != size:
                         raise TransferError("Upload server responded before the file was complete.")
-                    # File2Share returns a page in the body and the actual file URL
-                    # in this header. Other compatible hosts can return just a URL.
-                    link = response.headers.get("X-Direct-Url")
-                    if link is None:
-                        try:
-                            link = result.decode("utf-8").strip()
-                        except UnicodeDecodeError:
-                            raise TransferError(
-                                "Upload server returned an invalid download link."
-                            ) from None
-                    else:
-                        link = link.strip()
-                    if not valid_link(link):
-                        raise TransferError("Upload server returned an invalid download link.")
                     return link
         except TransferError:
             raise
         except (aiohttp.ClientError, OSError, TimeoutError) as exc:
             cause = exc.__cause__
             while cause:
-                if isinstance(cause, TransferError):
+                if isinstance(cause, (TransferError, errors.RPCError)):
                     raise cause from None
                 cause = cause.__cause__
             if isinstance(exc, TimeoutError):
@@ -139,9 +132,16 @@ class TransferClient:
             ) from None
 
 
-async def stream_telegram(client, message, transfer: TransferClient, progress=None) -> str:
+async def stream_telegram(
+    client: TelegramClient,
+    message: Message,
+    transfer: TransferClient,
+    progress: Progress | None = None,
+) -> str:
     """Close Telegram's borrowed download sender on HTTP errors or cancellation."""
     file = message.file
+    if file is None or file.size is None:
+        raise TransferError("The Telegram message has no downloadable file with a known size.")
     filename = file.name or f"telegram-{message.id}{file.ext or '.bin'}"
     stream = client.iter_download(message.media, request_size=CHUNK_SIZE, file_size=file.size)
     try:

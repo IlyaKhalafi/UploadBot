@@ -36,6 +36,9 @@ uv sync --locked --extra speed
 
 Runtime code lives in `src/uploadbot`. Run the installed `uploadbot` command or
 `python -m uploadbot` through uv. Build distributions with `uv build`.
+The command handler, configuration, HTTP transport, and shared URL validation
+live in separate modules. Keep their public interfaces typed and avoid coupling
+the streaming transport to chat formatting.
 
 Describe the problem and resulting behavior. Include reproduction steps or tests
 for streaming, cancellation, or protocol changes. Keep network buffers bounded,

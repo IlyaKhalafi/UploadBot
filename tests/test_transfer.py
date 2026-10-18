@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 import aiohttp
 import pytest
 from aiohttp import web
+from telethon import errors
 
 from uploadbot.transfer import (
     CHUNK_SIZE,
@@ -136,6 +137,29 @@ async def test_download_failure_is_not_success(server_factory, session):
     transfer = TransferClient(session, await server_factory(handler), 100)
     with pytest.raises(TransferError):
         await transfer.upload(source(), "a", 10)
+
+
+async def test_telegram_rate_limit_survives_http_exception_wrapping(server_factory, session):
+    async def handler(request):
+        await request.read()
+        return web.Response(text="https://files.example/a")
+
+    async def source():
+        yield b"first"
+        raise errors.FloodWaitError(request=None, capture=30)
+
+    transfer = TransferClient(session, await server_factory(handler), 100)
+    with pytest.raises(errors.FloodWaitError) as result:
+        await transfer.upload(source(), "a", 10)
+    assert result.value.seconds == 30
+
+
+@pytest.mark.parametrize("file", [None, SimpleNamespace(size=None)])
+async def test_unknown_telegram_media_is_rejected_before_downloading(file):
+    client = Mock()
+    with pytest.raises(TransferError, match="known size"):
+        await stream_telegram(client, SimpleNamespace(file=file), Mock())
+    client.iter_download.assert_not_called()
 
 
 async def test_timeout(server_factory):

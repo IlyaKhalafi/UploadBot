@@ -11,6 +11,10 @@ Neither command needs virtual environment activation. Run from the project
 directory to load its `.env`, or provide configuration through environment
 variables when running an installed package elsewhere.
 
+Use `uv run --no-sync uploadbot --check-config` to validate settings without a
+network connection. `uv run --no-sync uploadbot --version` prints the installed
+version without reading credentials.
+
 ## Credentials
 
 Create a bot with [BotFather](https://t.me/BotFather). Get the application API ID

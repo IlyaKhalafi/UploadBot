@@ -71,7 +71,9 @@ def test_custom_server_and_allowlist(monkeypatch):
     assert settings.max_file_size == 200_000_000
 
 
-@pytest.mark.parametrize("url", ["https://file2share.us", "https://www.file2share.us"])
+@pytest.mark.parametrize(
+    "url", ["https://file2share.us", "https://www.file2share.us", "https://file2share.us."]
+)
 def test_file2share_limit_is_checked_before_startup(url, monkeypatch):
     monkeypatch.setenv("TRANSFER_URL", url)
     monkeypatch.setenv("MAX_FILE_SIZE", "95000001")

@@ -1,7 +1,11 @@
 """Application startup and Telegram client lifecycle."""
 
+import argparse
 import asyncio
 import logging
+from collections.abc import Sequence
+from contextlib import suppress
+from importlib.metadata import version
 
 import aiohttp
 from telethon import TelegramClient, events
@@ -12,7 +16,7 @@ from uploadbot.transfer import TransferClient
 
 
 async def run(settings: Settings) -> None:
-    settings.session_path.parent.mkdir(parents=True, exist_ok=True)
+    settings.session_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     client = TelegramClient(
         str(settings.session_path),
         settings.api_id,
@@ -40,23 +44,32 @@ async def run(settings: Settings) -> None:
             await client.disconnect()
 
 
-def main() -> None:
+def main(argv: Sequence[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(
+        prog="uploadbot", description="Stream Telegram files to the web"
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {version('telegram-uploadbot')}"
+    )
+    parser.add_argument(
+        "--check-config",
+        action="store_true",
+        help="validate settings without connecting to Telegram",
+    )
+    arguments = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     logging.getLogger("telethon").setLevel(logging.WARNING)
     try:
         settings = Settings.from_env()
     except ValueError as exc:
         raise SystemExit(f"Invalid configuration. {exc}") from None
-    try:
-        import uvloop
-    except ImportError:
-        asyncio.run(run(settings))
-    else:
-        uvloop.run(run(settings))
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        pass
+    if arguments.check_config:
+        print("Configuration is valid.")
+        return
+    with suppress(KeyboardInterrupt):
+        try:
+            import uvloop
+        except ImportError:
+            asyncio.run(run(settings))
+        else:
+            uvloop.run(run(settings))

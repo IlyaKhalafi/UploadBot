@@ -8,6 +8,8 @@ from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
+from uploadbot.urls import upload_base_url
+
 DEFAULT_TRANSFER_URL = "https://file2share.us"
 FILE2SHARE_MAX_FILE_SIZE = 95_000_000
 
@@ -44,27 +46,10 @@ class Settings:
             raise ValueError("API_HASH must be the 32-character hash from my.telegram.org")
         if not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]+", bot_token):
             raise ValueError("BOT_TOKEN must be a bot token from @BotFather")
-        url = os.environ.get("TRANSFER_URL", DEFAULT_TRANSFER_URL).strip().rstrip("/")
-        try:
-            parts = urlsplit(url)
-            valid = (
-                parts.scheme in {"http", "https"}
-                and parts.hostname
-                and parts.port != 0
-                and not parts.username
-                and not parts.password
-                and not parts.query
-                and not parts.fragment
-                and not any(c.isspace() or ord(c) < 32 for c in url)
-            )
-        except ValueError:
-            valid = False
-        if not valid:
-            raise ValueError(
-                "TRANSFER_URL must be an HTTP(S) base URL without credentials or query"
-            )
+        url = upload_base_url(os.environ.get("TRANSFER_URL", DEFAULT_TRANSFER_URL))
         max_file_size = positive_int("MAX_FILE_SIZE", str(FILE2SHARE_MAX_FILE_SIZE))
-        if parts.hostname in {"file2share.us", "www.file2share.us"} and (
+        host = (urlsplit(url).hostname or "").rstrip(".")
+        if host in {"file2share.us", "www.file2share.us"} and (
             max_file_size > FILE2SHARE_MAX_FILE_SIZE
         ):
             raise ValueError("MAX_FILE_SIZE cannot exceed 95000000 bytes when using File2Share")

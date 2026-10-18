@@ -130,7 +130,7 @@ class Provider:
                     endpoint,
                     encrypted=source.encrypted,
                 )
-            return self._result(
+            return await self._result(
                 response, self.base_url, source.filename, source.size, self.name, options
             )
 
@@ -217,12 +217,27 @@ class Provider:
                     "automatic fallback was stopped."
                 ) from None
             raise
-        return self._result(
+        return await self._result(
             response, self.base_url, source.filename, source.size, self.name, options
         )
 
-    def _result(self, response, base, filename, size, name, options) -> UploadResult:
-        result = upload_result(response, base, filename, size, name, options)
+    async def _result(self, response, base, filename, size, name, options) -> UploadResult:
+        try:
+            result = upload_result(response, base, filename, size, name, options)
+        except TransferError:
+            deletion = response.headers.get("x-delete-url") or response.headers.get("x-url-delete")
+            if deletion and same_origin(deletion, self.base_url):
+                try:
+                    async with asyncio.timeout(10):
+                        await self.transport.request(
+                            "DELETE", deletion, headers=self.config.headers
+                        )
+                except (TransferError, TimeoutError):
+                    pass
+            raise CompletionUncertain(
+                f"Provider {self.name} accepted the upload but returned an invalid link. "
+                "Automatic fallback was stopped."
+            ) from None
         if self.config.kind == "file2share":
             result = replace(result, expires_at=time.time() + options.retention_days * 86400)
         return result

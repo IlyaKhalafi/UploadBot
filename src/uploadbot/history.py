@@ -205,16 +205,48 @@ class HistoryStore:
         return await self._call(select)
 
     async def set_preferences(self, user_id: int, provider: str, options: UploadOptions) -> None:
-        if not re.fullmatch(r"[a-zA-Z0-9_-]{1,32}", provider):
+        await self.update_preferences(
+            user_id,
+            provider,
+            provider=provider,
+            retention_days=options.retention_days,
+            encrypted=options.encrypted,
+        )
+
+    async def update_preferences(
+        self,
+        user_id: int,
+        default_provider: str,
+        *,
+        provider: str | None = None,
+        retention_days: int | None = None,
+        encrypted: bool | None = None,
+    ) -> tuple[str, UploadOptions]:
+        if provider is not None and not re.fullmatch(r"[a-zA-Z0-9_-]{1,32}", provider):
             raise ValueError("Invalid provider name")
 
-        def update(db: sqlite3.Connection) -> None:
+        def update(db: sqlite3.Connection) -> tuple[str, UploadOptions]:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT * FROM preferences WHERE user_id = ?", (user_id,)).fetchone()
+            selected = (
+                provider if provider is not None else (row["provider"] if row else default_provider)
+            )
+            days = (
+                retention_days
+                if retention_days is not None
+                else (row["retention_days"] if row else 14)
+            )
+            encrypt = (
+                encrypted if encrypted is not None else (bool(row["encrypted"]) if row else False)
+            )
+            options = UploadOptions(days, encrypt)
             db.execute(
                 "INSERT INTO preferences (user_id, provider, retention_days, encrypted) "
                 "VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET "
                 "provider=excluded.provider, retention_days=excluded.retention_days, "
                 "encrypted=excluded.encrypted",
-                (user_id, provider, options.retention_days, int(options.encrypted)),
+                (user_id, selected, options.retention_days, int(options.encrypted)),
             )
+            return selected, options
 
-        await self._call(update)
+        return await self._call(update)

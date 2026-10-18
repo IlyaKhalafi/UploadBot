@@ -5,7 +5,7 @@ sequenceDiagram
     participant User
     participant Bot as UploadBot
     participant Telegram
-    participant Host as Transfer server
+    participant Host as File2Share
     User->>Bot: Send a file
     Bot->>Bot: Validate size and reserve a slot
     Bot->>Host: PUT /filename (Content-Length)
@@ -23,6 +23,16 @@ those chunks to `aiohttp` as a request body. HTTP flow control pauses the produc
 when the destination cannot accept more data. No application-level prefetch queue
 or temporary file grows with file size. Socket buffers and Telegram/HTTP internal
 buffers still consume memory; this is not a zero-copy implementation.
+
+File2Share is the default upload host. Its response body contains a sharing page
+URL, while the `X-Direct-Url` header identifies the actual file. UploadBot prefers
+and validates that direct URL so the returned link works in a browser or a
+download client. Compatible custom hosts can return a plain URL in the body.
+
+Each file uses one HTTP request. The default limit is 95,000,000 bytes to fit
+File2Share's 95 MB request limit. Its separate chunked API for larger files is
+not implemented. The host controls retention and applies its own rate limits.
+See the [File2Share API guide](https://www.file2share.us/cli).
 
 The transfer starts uploading before the Telegram download completes, removing
 the separate disk-writing phase and allowing network operations to overlap.
@@ -78,9 +88,10 @@ Keep that connection open, then open the returned `http://127.0.0.1:36579/...`
 URL in your browser. Substitute the receiver's actual port in both places if it
 differs. The receiver must remain running for the download to work.
 
-For links other people can open without SSH, configure `TRANSFER_URL` with a
-working public transfer.sh-compatible host. Changing the hostname in a returned
-URL does not make a loopback-bound receiver publicly reachable.
+Normal operation uses File2Share and returns public URLs that need no SSH
+forwarding. Loopback links appear only if an operator deliberately configures a
+local upload receiver. Changing the hostname in a returned URL does not make a
+loopback-bound receiver publicly reachable.
 
 ## Configuration and sessions
 

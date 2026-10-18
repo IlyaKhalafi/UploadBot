@@ -11,11 +11,11 @@
 # UploadBot
 
 **Turn Telegram files into shareable links as they stream.** Send a document,
-photo, video, or audio file to the bot and receive a download URL from your
-transfer.sh-compatible server. Send a public file URL to receive it on Telegram.
+photo, video, or audio file to the bot and receive a public download URL from
+[File2Share](https://file2share.us). Send a public file URL to receive it on Telegram.
 
 ```text
-Telegram ── 512 KiB chunks ──► UploadBot ── HTTP PUT ──► Transfer server
+Telegram -> 512 KiB chunks -> UploadBot -> HTTP PUT -> File2Share
                                   │
                          No temporary file
 ```
@@ -29,18 +29,29 @@ Telegram ── 512 KiB chunks ──► UploadBot ── HTTP PUT ──► Tra
 - **Stay responsive.** Shared HTTP connections, optional native cryptography and
   uvloop, progress updates, and cancellable transfers.
 - **Run it your way.** Environment configuration, an optional user allowlist,
-  Docker Compose, and a configurable transfer server.
+  Docker Compose, and support for custom upload hosts.
 
-> **Bring a working transfer server.** The public `transfer.sh` endpoint was
-> unreachable from the development environment during this update. Availability
-> is not guaranteed. Set `TRANSFER_URL` to a working instance before testing.
-> The protocol is documented by [transfer.sh](https://github.com/dutchcoders/transfer.sh).
+## File2Share hosting
 
-A URL beginning with `127.0.0.1` or `localhost` opens on the machine running your
-browser. If the bot returns such a link, its upload server is local to the bot's
-machine. To download from a different computer, use SSH forwarding or configure
-`TRANSFER_URL` with a server reachable from that computer. See
-[local test downloads](docs/architecture.md#local-test-downloads).
+The default host is `https://file2share.us`. No hosting account or API key is
+needed. UploadBot streams each file in a single PUT request and returns the
+direct file URL supplied by File2Share.
+
+- Files can be up to **95 MB** (`95000000` bytes).
+- File2Share keeps uploads for **up to 14 days**.
+- The host allows **40 uploads per hour per IP address**.
+- Anyone with the download link can access the file.
+- Programs and web pages such as `.exe`, `.apk`, `.html`, and `.svg` are rejected
+  by the host. Archive those files before sending them.
+
+These are the host's limits, documented in the
+[File2Share command-line guide](https://www.file2share.us/cli). Larger files need
+File2Share's separate chunked upload API, which UploadBot does not implement.
+Increasing `MAX_FILE_SIZE` above 95 MB is rejected when File2Share is selected.
+
+Custom hosts can be configured with `TRANSFER_URL`. They must accept raw PUT
+uploads at `/<filename>` and return a download URL in the response body or the
+`X-Direct-Url` header. Limits and retention depend on the selected host.
 
 ## Quick start
 
@@ -57,7 +68,7 @@ source .venv/bin/activate
 python -m pip install -r requirements.lock
 python -m pip install --no-deps .
 cp .env.example .env
-# Fill in API_ID, API_HASH, BOT_TOKEN, and a working TRANSFER_URL in .env.
+# Fill in API_ID, API_HASH, and BOT_TOKEN in .env.
 python main.py
 ```
 
@@ -74,13 +85,13 @@ Startup is noninteractive and works with a service manager.
 | Send to the bot | Result |
 | --- | --- |
 | `/start` or `/help` | Welcome message, file limit, and commands |
-| A document, photo, video, audio, voice message, or animation | Stream to the transfer server and return its URL |
+| A document, photo, video, audio, voice message, or animation | Stream to File2Share and return a public download URL |
 | A public HTTP(S) file URL | Ask Telegram to fetch and send the file |
 | `/cancel` | Stop your active transfer |
 
 The bot operates in private chats. Each user can run one transfer at a time;
 additional requests receive a busy message. Uploaded files are accessible through
-their sharing URL, and their retention period depends on your transfer server.
+their sharing URL. File2Share removes uploads after up to 14 days.
 
 For URL → Telegram, the URL must point to a file Telegram can fetch without login
 or browser cookies. Telegram imposes its own type and size limits. Signed query
@@ -96,8 +107,8 @@ precedence. Keep `.env` and Telegram session files private; both are gitignored.
 | `API_ID` | Required | Telegram application API ID |
 | `API_HASH` | Required | Telegram application API hash |
 | `BOT_TOKEN` | Required | Your bot's BotFather token |
-| `TRANSFER_URL` | `https://transfer.sh` | Working transfer.sh-compatible base URL; HTTPS recommended |
-| `MAX_FILE_SIZE` | `200000000` | Maximum Telegram → server file size, in bytes (200 MB) |
+| `TRANSFER_URL` | `https://file2share.us` | Upload host base URL; HTTPS recommended |
+| `MAX_FILE_SIZE` | `95000000` | Maximum Telegram to host file size, in bytes (95 MB) |
 | `MAX_CONCURRENT_TRANSFERS` | `3` | Total active transfers; one per user |
 | `TRANSFER_TIMEOUT` | `1800` | Per-transfer time limit in seconds |
 | `ALLOWED_USER_IDS` | Empty | Comma-separated Telegram user IDs; empty permits everyone |
@@ -106,7 +117,15 @@ precedence. Keep `.env` and Telegram session files private; both are gitignored.
 Use `ALLOWED_USER_IDS` for a personal bot. Increasing concurrency trades more
 network connections and bounded per-transfer buffers for more simultaneous work.
 `MAX_FILE_SIZE` applies to files received from Telegram. Telegram controls limits
-when it fetches a URL directly.
+when it fetches a URL directly. For custom hosts, set `MAX_FILE_SIZE` to a limit
+that the host supports.
+
+Existing installations should update both settings in `.env`.
+
+```dotenv
+TRANSFER_URL=https://file2share.us
+MAX_FILE_SIZE=95000000
+```
 
 ## Docker
 
@@ -126,15 +145,17 @@ The old flow downloaded a file to disk and then uploaded it using a blocking
 HTTP call. The new flow removes temporary file I/O and starts the upload while
 the Telegram download is still in progress. Memory remains bounded by chunks and
 transport buffers rather than file size. Actual throughput depends on Telegram,
-your network, and the transfer server; no universal speed multiplier is claimed.
+your network, and the upload host; no universal speed multiplier is claimed.
 
-Uploads use raw PUT requests with a known `Content-Length`. HTTP failures,
+Uploads use raw PUT requests with a known `Content-Length`. File2Share returns
+the direct download URL in its `X-Direct-Url` response header. HTTP failures,
 incomplete downloads, invalid response URLs, and timeouts are reported as errors.
 Redirects are rejected. Configure the final upload endpoint. Interrupted uploads
 are not resumed or automatically retried; resend the file when ready.
 
 See [the architecture guide](docs/architecture.md) for flow control, cleanup, and
-known limitations. Upgrading an older installation? Read the
+known limitations, including [local test downloads](docs/architecture.md#local-test-downloads).
+Upgrading an older installation? Read the
 [migration notes](CHANGELOG.md#migrating-from-1x).
 
 ## Development

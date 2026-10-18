@@ -16,7 +16,7 @@ uv run --no-sync pip-audit -r requirements.lock --require-hashes --disable-pip
 ```
 
 Tests use a local HTTP server and fake Telegram messages. No bot token, Telegram
-API credentials, or public transfer.sh instance is required. The streaming tests
+API credentials, or File2Share access is required. The streaming tests
 verify upload begins before the source finishes, compare a 64 MiB transfer's
 SHA-256 digest, and check bounded Python memory allocations.
 

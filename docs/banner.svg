@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" role="img" aria-labelledby="title desc">
   <title id="title">UploadBot. Files in. Links out.</title>
-  <desc id="desc">Telegram files stream through UploadBot to a transfer server without temporary downloads.</desc>
+  <desc id="desc">Telegram files stream through UploadBot to File2Share without temporary downloads.</desc>
   <defs>
     <linearGradient id="bg" x2="1" y2="1">
       <stop stop-color="#101d37"/>

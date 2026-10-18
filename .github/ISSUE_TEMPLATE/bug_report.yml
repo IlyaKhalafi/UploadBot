@@ -12,6 +12,6 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Python version, operating system, installation method, and transfer server software/version.
+      description: Python version, operating system, installation method, and upload host.
     validations:
       required: true

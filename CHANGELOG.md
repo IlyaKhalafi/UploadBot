@@ -2,6 +2,8 @@
 
 ## 2.0.0
 
+- Use File2Share by default, return its direct download URLs, and enforce its
+  95 MB single-request upload limit.
 - Stream Telegram file chunks into a raw HTTP PUT request, removing temporary
   downloads and blocking HTTP requests.
 - Replace Pyrogram with Telethon; pin current runtime and optional speed packages.
@@ -21,5 +23,6 @@ Requires Python 3.11+. Copy credentials from your old `config.py` into `.env` us
 are not compatible with Telethon. The default new session lives at
 `data/uploadbot.session`. `REPL_URL` and the Replit self-ping helper were removed.
 
-Set `TRANSFER_URL` to a reachable transfer.sh-compatible server. Link retention
-is controlled by that server; UploadBot no longer promises a two-week lifetime.
+Set `TRANSFER_URL=https://file2share.us` and `MAX_FILE_SIZE=95000000` in `.env`.
+File2Share retains uploads for up to 14 days. Custom PUT upload hosts remain
+supported through `TRANSFER_URL`, with retention controlled by that host.

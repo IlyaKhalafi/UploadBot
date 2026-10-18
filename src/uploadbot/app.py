@@ -1,4 +1,4 @@
-"""Run UploadBot with python main.py."""
+"""Application startup and Telegram client lifecycle."""
 
 import asyncio
 import logging
@@ -6,9 +6,9 @@ import logging
 import aiohttp
 from telethon import TelegramClient, events
 
-from config import Settings
-from plugins.bot import UploadBot
-from utils.transfer import TransferClient
+from uploadbot.bot import UploadBot
+from uploadbot.config import Settings
+from uploadbot.transfer import TransferClient
 
 
 async def run(settings: Settings) -> None:

@@ -28,17 +28,15 @@ dev = [
 ]
 
 [project.scripts]
-uploadbot = "main:main"
+uploadbot = "uploadbot.app:main"
 
 [project.urls]
 Repository = "https://github.com/IlyaKhalafi/UploadBot"
 Issues = "https://github.com/IlyaKhalafi/UploadBot/issues"
 
-[tool.setuptools]
-py-modules = ["main", "config"]
-
 [tool.setuptools.packages.find]
-include = ["plugins*", "utils*"]
+where = ["src"]
+include = ["uploadbot*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

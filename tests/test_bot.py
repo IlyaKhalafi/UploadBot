@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock
 import pytest
 from telethon import errors, types
 
-from config import Settings
-from plugins.bot import UploadBot, public_link
-from utils.transfer import TransferError
+from uploadbot.bot import UploadBot, public_link
+from uploadbot.config import Settings
+from uploadbot.transfer import TransferError
 
 
 def event(text="", file=None, user_id=1):
@@ -100,7 +100,7 @@ async def test_link_preview_is_not_uploaded_as_a_file():
 )
 async def test_upload_reply_explains_private_download_links(link, local, monkeypatch):
     app = bot()
-    monkeypatch.setattr("plugins.bot.stream_telegram", AsyncMock(return_value=link))
+    monkeypatch.setattr("uploadbot.bot.stream_telegram", AsyncMock(return_value=link))
     incoming = event(file=SimpleNamespace(size=10))
     await app.handle(incoming)
     reply = incoming.reply.return_value.edit.call_args.args[0]

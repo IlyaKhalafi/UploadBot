@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from config import Settings
+from uploadbot.config import Settings
 
 
 @pytest.fixture(autouse=True)
@@ -20,7 +20,7 @@ def clean_environment(monkeypatch):
     )
     for name in names:
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr("config.load_dotenv", lambda *args: None)
+    monkeypatch.setattr("uploadbot.config.load_dotenv", lambda *args: None)
     monkeypatch.setenv("API_ID", "123")
     monkeypatch.setenv("API_HASH", "a" * 32)
     monkeypatch.setenv("BOT_TOKEN", "123:example-test-token")

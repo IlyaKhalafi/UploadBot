@@ -8,7 +8,13 @@ import aiohttp
 import pytest
 from aiohttp import web
 
-from utils.transfer import CHUNK_SIZE, TransferClient, TransferError, safe_filename, stream_telegram
+from uploadbot.transfer import (
+    CHUNK_SIZE,
+    TransferClient,
+    TransferError,
+    safe_filename,
+    stream_telegram,
+)
 
 
 async def chunks(*blocks):

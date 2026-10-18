@@ -9,8 +9,8 @@ from urllib.parse import unquote, urlsplit
 
 from telethon import errors, types
 
-from config import Settings
-from utils.transfer import TransferClient, TransferError, stream_telegram, valid_link
+from uploadbot.config import Settings
+from uploadbot.transfer import TransferClient, TransferError, stream_telegram, valid_link
 
 logger = logging.getLogger(__name__)
 

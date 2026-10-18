@@ -36,7 +36,7 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
-        load_dotenv(Path(__file__).with_name(".env"))
+        load_dotenv(Path.cwd() / ".env")
         api_id = positive_int("API_ID", "0")
         api_hash = os.environ.get("API_HASH", "").strip()
         bot_token = os.environ.get("BOT_TOKEN", "").strip()

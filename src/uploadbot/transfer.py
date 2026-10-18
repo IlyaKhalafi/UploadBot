@@ -1,4 +1,4 @@
-"""Backpressured HTTP uploads; never buffer an entire file or write it to disk."""
+"""Backpressured HTTP uploads without temporary files or whole-file buffers."""
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable

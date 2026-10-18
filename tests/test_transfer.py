@@ -9,6 +9,7 @@ import pytest
 from aiohttp import web
 from telethon import errors
 
+from uploadbot.models import UploadOptions
 from uploadbot.transfer import (
     CHUNK_SIZE,
     TransferClient,
@@ -61,6 +62,45 @@ async def test_file2share_direct_url_takes_precedence(body, server_factory, sess
 
     transfer = TransferClient(session, await server_factory(handler), 100)
     assert await transfer.upload(chunks(b"hello"), "video.mp4", 5) == direct
+
+
+async def test_retention_and_delete_metadata(server_factory, session):
+    base = ""
+
+    async def handler(request):
+        assert request.headers["Max-Days"] == "2"
+        await request.read()
+        return web.Response(
+            text="https://files.example/a", headers={"X-Delete-Url": base + "/secret"}
+        )
+
+    base = await server_factory(handler)
+    transfer = TransferClient(session, base, 100, name="test")
+    result = await transfer.upload_metadata(chunks(b"hello"), "a", 5, options=UploadOptions(2))
+    assert result.provider == "test"
+    assert result.delete_url == base + "/secret"
+    assert "secret" not in repr(result)
+
+
+async def test_deletion_header_cannot_redirect_requests_to_another_origin(server_factory, session):
+    async def handler(request):
+        await request.read()
+        return web.Response(
+            text="https://files.example/a", headers={"X-Delete-Url": "http://127.0.0.1:1/admin"}
+        )
+
+    transfer = TransferClient(session, await server_factory(handler), 100)
+    result = await transfer.upload_metadata(chunks(b"hello"), "a", 5)
+    assert result.url == "https://files.example/a"
+    assert result.delete_url is None
+
+
+async def test_encryption_preference_cannot_label_plaintext_as_encrypted(session):
+    transfer = TransferClient(session, "http://127.0.0.1:1", 100)
+    with pytest.raises(TransferError, match="encrypted byte source"):
+        await transfer.upload_metadata(
+            chunks(b"hello"), "a", 5, options=UploadOptions(encrypted=True)
+        )
 
 
 @pytest.mark.parametrize("direct", ["", "file:///etc/passwd", "https://user:password@host/a"])

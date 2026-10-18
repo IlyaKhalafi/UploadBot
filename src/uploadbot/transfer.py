@@ -1,25 +1,19 @@
-"""Backpressured HTTP uploads without temporary files or whole-file buffers."""
+"""Raw PUT uploads and host metadata parsing."""
 
-import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager, suppress
-from typing import TypeAlias
-from urllib.parse import quote
+import time
+from collections.abc import AsyncIterator
+from urllib.parse import quote, urlsplit
 
 import aiohttp
-from telethon import TelegramClient, errors
+from telethon import TelegramClient
 from telethon.tl.custom import Message
 
+from uploadbot.errors import HostError, TransferError
+from uploadbot.http import Chunk, HostResponse, HTTPTransport, Progress
+from uploadbot.models import UploadOptions, UploadResult
 from uploadbot.urls import valid_link
 
 CHUNK_SIZE = 512 * 1024
-MAX_RESPONSE_SIZE = 8192
-Progress = Callable[[int, int], Awaitable[None]]
-Chunk: TypeAlias = bytes | memoryview
-
-
-class TransferError(Exception):
-    """A transfer failed with a message safe to show to the user."""
 
 
 def safe_filename(name: str) -> str:
@@ -28,31 +22,64 @@ def safe_filename(name: str) -> str:
     return name[:180] if name and name not in {".", ".."} else "file.bin"
 
 
-async def response_link(response: aiohttp.ClientResponse) -> str:
-    """Read a bounded host response and prefer its direct download URL."""
-    result = bytearray()
-    async for chunk in response.content.iter_chunked(1024):
-        result.extend(chunk)
-        if len(result) > MAX_RESPONSE_SIZE:
-            raise TransferError("Upload server returned an oversized response.")
-    link = response.headers.get("X-Direct-Url")
+def same_origin(left: str, right: str) -> bool:
+    if not valid_link(left) or not valid_link(right):
+        return False
+    a, b = urlsplit(left), urlsplit(right)
+    return (a.scheme, a.hostname, a.port or (443 if a.scheme == "https" else 80)) == (
+        b.scheme,
+        b.hostname,
+        b.port or (443 if b.scheme == "https" else 80),
+    )
+
+
+def upload_result(
+    response: HostResponse,
+    base_url: str,
+    filename: str,
+    size: int,
+    name: str,
+    options: UploadOptions,
+) -> UploadResult:
+    link = response.headers.get("x-direct-url")
     if link is None:
         try:
-            link = result.decode("utf-8").strip()
+            link = response.body.decode("utf-8").strip()
         except UnicodeDecodeError:
             raise TransferError("Upload server returned an invalid download link.") from None
     else:
         link = link.strip()
     if not valid_link(link):
         raise TransferError("Upload server returned an invalid download link.")
-    return link
+    deletion = response.headers.get("x-delete-url") or response.headers.get("x-url-delete")
+    if deletion and not same_origin(deletion, base_url):
+        deletion = None
+    native = urlsplit(base_url).hostname in {"file2share.us", "www.file2share.us"}
+    return UploadResult(
+        link,
+        safe_filename(filename),
+        size,
+        name,
+        deletion,
+        time.time() + options.retention_days * 86400 if native else None,
+        options.encrypted,
+    )
 
 
 class TransferClient:
-    def __init__(self, session: aiohttp.ClientSession, base_url: str, max_file_size: int) -> None:
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        base_url: str,
+        max_file_size: int,
+        *,
+        name: str = "file2share",
+    ) -> None:
         self.session = session
         self.base_url = base_url.rstrip("/")
         self.max_file_size = max_file_size
+        self.name = name
+        self.transport = HTTPTransport(session)
 
     async def upload(
         self,
@@ -61,75 +88,41 @@ class TransferClient:
         size: int,
         progress: Progress | None = None,
     ) -> str:
-        """PUT raw chunks with a known length. The caller owns the source iterator."""
+        return (await self.upload_metadata(chunks, filename, size, progress)).url
+
+    async def upload_metadata(
+        self,
+        chunks: AsyncIterator[Chunk],
+        filename: str,
+        size: int,
+        progress: Progress | None = None,
+        *,
+        options: UploadOptions | None = None,
+    ) -> UploadResult:
+        options = options or UploadOptions()
+        if options.encrypted:
+            raise TransferError("Encrypted uploads require an encrypted byte source.")
         if size <= 0 or size > self.max_file_size:
             raise TransferError("The file is empty or exceeds the configured size limit.")
-        sent = 0
-        writer: asyncio.Task | None = None
+        response = await self.transport.stream(
+            f"{self.base_url}/{quote(safe_filename(filename), safe='')}",
+            chunks,
+            size,
+            progress,
+            headers={"Max-Days": str(options.retention_days)},
+        )
+        return upload_result(response, self.base_url, filename, size, self.name, options)
 
-        async def body() -> AsyncIterator[Chunk]:
-            nonlocal sent, writer
-            writer = asyncio.current_task()
-            async for chunk in chunks:
-                if not chunk:
-                    continue
-                sent += len(chunk)
-                if sent > size or sent > self.max_file_size:
-                    raise TransferError("Telegram sent more data than the declared file size.")
-                yield chunk
-                if progress:
-                    await progress(sent, size)
-            if sent != size:
-                raise TransferError("The Telegram download ended before the file was complete.")
-
-        @asynccontextmanager
-        async def managed_body() -> AsyncIterator[AsyncIterator[Chunk]]:
-            stream = body()
-            try:
-                yield stream
-            finally:
-                # aiohttp writes the body in a separate task. On cancellation before
-                # response headers arrive, wait for that task before closing the stream.
-                if writer is not None and not writer.done():
-                    writer.cancel()
-                    with suppress(asyncio.CancelledError, Exception):
-                        await writer
-                await stream.aclose()
-
-        url = f"{self.base_url}/{quote(safe_filename(filename), safe='')}"
+    async def delete(self, result: UploadResult) -> None:
+        if not result.delete_url:
+            raise TransferError("This host did not provide a deletion link.")
+        if result.provider != self.name or not same_origin(result.delete_url, self.base_url):
+            raise TransferError("The deletion link does not belong to this host.")
         try:
-            async with managed_body() as stream:
-                async with self.session.put(
-                    url,
-                    data=stream,
-                    headers={
-                        "Content-Length": str(size),
-                        "Content-Type": "application/octet-stream",
-                    },
-                    allow_redirects=False,
-                ) as response:
-                    if not 200 <= response.status < 300:
-                        raise TransferError(
-                            f"Upload server returned HTTP {response.status}. "
-                            "Check TRANSFER_URL or try again later."
-                        )
-                    link = await response_link(response)
-                    if sent != size:
-                        raise TransferError("Upload server responded before the file was complete.")
-                    return link
-        except TransferError:
-            raise
-        except (aiohttp.ClientError, OSError, TimeoutError) as exc:
-            cause = exc.__cause__
-            while cause:
-                if isinstance(cause, (TransferError, errors.RPCError)):
-                    raise cause from None
-                cause = cause.__cause__
-            if isinstance(exc, TimeoutError):
-                raise TransferError("Transfer timed out. Please try again.") from None
-            raise TransferError(
-                "Could not reach the upload server or the connection was interrupted."
-            ) from None
+            await self.transport.request("DELETE", result.delete_url)
+        except HostError as exc:
+            if exc.status not in {404, 410}:
+                raise
 
 
 async def stream_telegram(

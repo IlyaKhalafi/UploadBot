@@ -1,5 +1,5 @@
 [build-system]
-requires = ["uv_build==0.13.1"]
+requires = ["uv_build==0.13.7"]
 build-backend = "uv_build"
 
 [project]
@@ -18,14 +18,14 @@ dependencies = [
 
 [project.optional-dependencies]
 speed = [
-  "cryptg==0.6.0",
+  "cryptg==0.6.1",
   "uvloop==0.23.0; sys_platform != 'win32' and platform_python_implementation == 'CPython'",
 ]
 [dependency-groups]
 dev = [
-  "pytest==9.1.1",
-  "pytest-asyncio==1.4.0",
-  "ruff==0.17.1",
+  "pytest==9.2.0",
+  "pytest-asyncio==1.4.1.post1",
+  "ruff==0.17.3",
   "pip-audit==2.10.1",
 ]
 
